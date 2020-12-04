@@ -28,6 +28,12 @@ def func_convert_HKEY_tolower(HKEY):
     s = str(HKEY).lower()
     return ast.literal_eval(s)
 
+def convert_lower(head):
+    head1 = {}
+    for _k, _v in head.items():
+        lower_k = _k.lower()
+        head1[lower_k] = _v
+    return head1
 
 def extract_domain(dom_str):
     dom  = 'empty'
@@ -123,18 +129,28 @@ def rindex(lst, val):
 def read_originator(head):
     originator = 'empty'
     if 'received' in head:
-        item = head['received'].lower()
+        if isinstance(head['received'], list):
+            path_len = len(head['received'])
+            item = head['received'][path_len - 1].lower()
+        else:
+            item = head['received'].lower()
+        #print('received: ', item)
         word_list = item.split()
         #print(word_list)
         if len( word_list ) > 0:
-            if 'from' in word_list:
-                index = rindex(word_list, 'from')
+            if 'by' in word_list:
+                index = rindex(word_list, 'by')
 
 
                 #print(index)
                 originator =  extract_domain( word_list[index+1] )
+                return originator
+            if 'from' in word_list:
+                index = rindex(word_list, 'from')
+                #print(index)
+                originator =  extract_domain( word_list[index+1] )
                 #originator =  word_list[index+1]
-
+    #print('originator: ', originator)
     return originator
 
 def read_dmarc(head):
@@ -184,16 +200,22 @@ def read_length(head):
     length = rec.count('Received:')
     return length
 
-def read_vec(header):
+
+
+def read_vec(header1):
+    header = convert_lower(header1)
     feature_list = []
     fromd = read_domain(header,'from')
     originator = read_originator(header)
+    #print('originator = ', originator)
+    #if check_true_dom(originator) == 0:
+        #originator = 'empty'
     returnd = read_domain(header,'return-path')
     replyto = read_domain(header,'reply-to')
 
     from_originator = '1' if (fromd == originator or originator == 'empty') else '0'
-    from_return = '1' if (fromd == returnd or originator == 'empty') else '0'
-    from_replyto = '1' if (fromd == replyto or originator == 'empty') else '0'
+    from_return = '1' if (fromd == returnd or returnd == 'empty') else '0'
+    from_replyto = '1' if (fromd == replyto or replyto == 'empty') else '0'
     originator_return = '1' if (originator == returnd or originator == 'empty' or returnd == 'empty') else '0'
     feature_list.append(int(from_originator))
     feature_list.append(int(from_return))
@@ -201,15 +223,16 @@ def read_vec(header):
     feature_list.append(int(originator_return))
 
     spf = read_spf(header)
-    spf_pass = '1' if (spf=='pass' or spf=='empty') else '0'
+    #print('spf = ', spf)
+    spf_pass = '1' if (spf=='pass' or spf=='empty' or spf=='permerror') else '0'
 
 
     dmarc = read_dmarc(header)
     dmarc_exist = '1' if (dmarc!='empty') else '0'
-    dmarc_pass = '1' if (dmarc.startswith('pass')) else '0'
+    dmarc_pass = '1' if (dmarc.startswith('pass') or dmarc.startswith('none')) else '0'
 
-    dkim = read_dkim(header)
-    dkim_pass = '1' if (dkim.startswith('pass')) else '0'
+    dkim = read_dkim(header).lower()
+    dkim_pass = '1' if (dkim.startswith('pass') or dkim.startswith('none') ) else '0'
 
     feature_list.append(int(spf_pass))
     feature_list.append(int(dmarc_exist))
@@ -239,7 +262,7 @@ def read_sub_len(header):
     else:
         return 0
 
-def read_feature(header):
+def read_feature_vec(header):
     feature_list = []
     fromd = read_domain(header,'from')
     originator = read_originator(header)
